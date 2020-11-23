@@ -1,0 +1,1 @@
+kube_deployment_status_observed_generation{namespace=~"kube-system|monitoring|velero|twistlock|platform-services|thanos"} != kube_deployment_metadata_generation{namespace=~"kube-system|monitoring|velero|twistlock|platform-services|thanos"}

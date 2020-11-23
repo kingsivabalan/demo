@@ -1,0 +1,53 @@
+az account set -s 
+az aks get-credentials -n <cluster-name> -g <rg-name> -a -f <>
+
+1. Edit alert manager object and update the routePrefix from / to /alertmanager
+	kubectl edit alertmanager prometheus-operator-alertmanager -n monitoring
+	routePrefix: /alertmanager
+ 
+2. Check whether the change is reflected in alertmanager pod , --web.route-prefix should be assigned with /alertmanager
+	kubectl get pods -n monitoring alertmanager-prometheus-operator-alertmanager-0 -o jsonpath='{.spec.containers[0].args[6]}
+ 
+3. Edit the prometheus object and update the pathPrefix from / to /alertmanager 
+	kubectl edit prometheus kube-prometheus -n monitoring
+		    alerting:
+		      alertmanagers:
+		      - apiVersion: v2
+		        name: prometheus-operator-alertmanager
+		        namespace: monitoring
+		        pathPrefix: /alertmanager
+
+	Check whether the change is reflected 
+		 kubectl get prometheus kube-prometheus -n monitoring -o jsonpath='{.spec.alerting.alertmanagers[].pathPrefix}'
+
+	check whether prometheus pod is getting restarted. if not restarted the prometheus pod
+ 
+4.Edit the existing prometheus ingress resource in monitoring and update below backend 
+	kubectl edit ing kube-prometheus -n monitoring
+ 	      - backend:
+	          serviceName: prometheus-operator-alertmanager
+        	  servicePort: 9093
+        	path: /alertmanager
+
+ 
+5.	Access alertmanager using the below url  and validate whether github auth is triggered
+https://prometheus-shrd.shsrv.platform.mnscorpdev.net/alertmanager
+ 
+6.	Prometheus will be still accessed from https://prometheus-shrd.shsrv.platform.mnscorpdev.net
+
+7. Change alert rules 
+	kubectl edit prometheusrules -n monitoring prometheus-kube-state-metrics-rules
+	change in expr: for DeploymentGenerationMismatch and DeploymentReplicasNotUpdated
+
+first alert rule 
+*****************
+kube_deployment_status_observed_generation{namespace=~"kube-system|monitoring|velero|twistlock|platform-services|thanos"} != kube_deployment_metadata_generation{namespace=~"kube-system|monitoring|velero|twistlock|platform-services|thanos"}
+
+second alert rule
+******************
+((kube_deployment_status_replicas_updated{namespace=~"kube-system|monitoring|velero|twistlock|platform-services|thanos"} != kube_deployment_spec_replicas{namespace=~"kube-system|monitoring|velero|twistlock|platform-services|thanos"})
+        or (kube_deployment_status_replicas_available{namespace=~"kube-system|monitoring|velero|twistlock|platform-services|thanos"} != kube_deployment_spec_replicas{namespace=~"kube-system|monitoring|velero|twistlock|platform-services|thanos"}))
+        unless (kube_deployment_spec_paused{namespace=~"kube-system|monitoring|velero|twistlock|platform-services|thanos"} == 1)
+
+check the alert rule in the below
+https://prometheus-dp.shsrv.platform.mnscorpcate.net/rules
